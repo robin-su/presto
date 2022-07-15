@@ -427,6 +427,15 @@ public class SqlTask
         return Futures.transform(futureTaskState, input -> getTaskInfo(), directExecutor());
     }
 
+    /**
+     * 更新需要处理的Split列表
+     * @param session
+     * @param fragment
+     * @param sources
+     * @param outputBuffers
+     * @param tableWriteInfo
+     * @return
+     */
     public TaskInfo updateTask(
             Session session,
             Optional<PlanFragment> fragment,
@@ -440,7 +449,7 @@ public class SqlTask
             // a VALUES query).
             outputBuffer.setOutputBuffers(outputBuffers);
 
-            // assure the task execution is only created once
+            // 确定该task execution只会被创建一次
             SqlTaskExecution taskExecution;
             synchronized (this) {
                 // is task already complete?
@@ -467,6 +476,7 @@ public class SqlTask
             }
 
             if (taskExecution != null) {
+                // 将sources中包含的所有的Split都合并到taskExecution现在需要处理的Split列表中
                 taskExecution.addSources(sources);
             }
         }

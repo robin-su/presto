@@ -284,56 +284,61 @@ public class SqlQueryScheduler
 
     private void schedule()
     {
+        // 如果仍然在调度前一批次的stage，则直接返回
         if (!scheduling.compareAndSet(false, true)) {
             // still scheduling the previous batch of stages
             return;
         }
 
+        // StageExecutionAndScheduler包含stage执行器和调度器实例，以及stage间的血缘关系
         List<StageExecutionAndScheduler> scheduledStageExecutions = new ArrayList<>();
 
+        // 设置当前线程名
         try (SetThreadName ignored = new SetThreadName("Query-%s", queryStateMachine.getQueryId())) {
             Set<StageId> completedStages = new HashSet<>();
 
             List<ExecutionSchedule> executionSchedules = new LinkedList<>();
-
+            // 如果当前线程未被中断，则不断循环
             while (!Thread.currentThread().isInterrupted()) {
-                // remove finished section
+                // 遍历executionSchedules，并移除所有已完成部分
                 executionSchedules.removeIf(ExecutionSchedule::isFinished);
 
-                // try to pull more section that are ready to be run
+                // 获取已就绪可以运行的更多的部分（深度先序遍历执行计划树，并限制最大并发数）
                 List<StreamingPlanSection> sectionsReadyForExecution = getSectionsReadyForExecution();
 
-                // all finished
+                // 如果所有部分都已运行完成，则退出循环
                 if (sectionsReadyForExecution.isEmpty() && executionSchedules.isEmpty()) {
                     break;
                 }
 
+                // 在创建SectionExecutions前对就绪部分应用运行时CBO优化
                 // Apply runtime CBO on the ready sections before creating SectionExecutions.
                 List<SectionExecution> sectionExecutions = createStageExecutions(sectionsReadyForExecution.stream()
                         .map(this::tryCostBasedOptimize)
                         .collect(toImmutableList()));
+                // 如果查询状态机的状态是已完成，则将就绪的sectionExecutions全部终止，并退出循环
                 if (queryStateMachine.isDone()) {
                     sectionExecutions.forEach(SectionExecution::abort);
                     break;
                 }
-
+                // 将所有部分的stage添加到scheduledStageExecutions中，然后为每个部分创建相应的"执行策略"executionPolicy并添加到executionSchedules中
                 sectionExecutions.forEach(sectionExecution -> scheduledStageExecutions.addAll(sectionExecution.getSectionStages()));
                 sectionExecutions.stream()
                         .map(SectionExecution::getSectionStages)
                         .map(stages -> executionPolicy.createExecutionSchedule(session, stages))
                         .forEach(executionSchedules::add);
-
+                // 如果待执行调度的部分非空并且不是已执行完成则执行循环
                 while (!executionSchedules.isEmpty() && executionSchedules.stream().noneMatch(ExecutionSchedule::isFinished)) {
                     List<ListenableFuture<?>> blockedStages = new ArrayList<>();
-
+                    // 获取所有部分的所有待调度的stage
                     List<StageExecutionAndScheduler> executionsToSchedule = executionSchedules.stream()
                             .flatMap(schedule -> schedule.getStagesToSchedule().stream())
                             .collect(toImmutableList());
-
+                    // 遍历所有待调度的stage,对于每个stage，调动schedule
                     for (StageExecutionAndScheduler executionAndScheduler : executionsToSchedule) {
                         executionAndScheduler.getStageExecution().beginScheduling();
 
-                        // perform some scheduling work
+                        // 获取stage调度器并执行调度获取结果
                         ScheduleResult result = executionAndScheduler.getStageScheduler()
                                 .schedule();
 
@@ -347,11 +352,14 @@ public class SqlQueryScheduler
 
                         // modify parent and children based on the results of the scheduling
                         if (result.isFinished()) {
+                            // 如果该stage调度任务执行完成，则更改父和子stage的状态机的状态
                             executionAndScheduler.getStageExecution().schedulingComplete();
                         }
                         else if (!result.getBlocked().isDone()) {
+                            // 如果该stage被阻塞了，则将其加入阻塞stage列表中
                             blockedStages.add(result.getBlocked());
                         }
+                        // 根据当前stage的结果，设置父stage的shuffle追踪地址（用来进行stage间的exchange数据）
                         executionAndScheduler.getStageLinkage()
                                 .processScheduleResults(executionAndScheduler.getStageExecution().getState(), result.getNewTasks());
                         schedulerStats.getSplitsScheduledPerIteration().add(result.getSplitsScheduled());
@@ -378,6 +386,7 @@ public class SqlQueryScheduler
                         }
                     }
 
+                    // 遍历已调度在执行中的stage，如果有stage已执行完成，则更新设置其父stage的shuffle追踪地址（从而可以启动下一阶段的stage执行）
                     // make sure to update stage linkage at least once per loop to catch async state changes (e.g., partial cancel)
                     boolean stageFinishedExecution = false;
                     for (StageExecutionAndScheduler stageExecutionAndScheduler : scheduledStageExecutions) {
@@ -391,6 +400,7 @@ public class SqlQueryScheduler
                         }
                     }
 
+                    // 如果有任何stage执行完成，则终止循环从而可以拉取更多的部分进行调度
                     // if any stage has just finished execution try to pull more sections for scheduling
                     if (stageFinishedExecution) {
                         break;
@@ -414,12 +424,12 @@ public class SqlQueryScheduler
                     throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Scheduling is complete, but stage execution %s is in state %s", stageExecutionAndScheduler.getStageExecution().getStageExecutionId(), state));
                 }
             }
-
+            // 释放stage调度锁
             scheduling.set(false);
 
             // Inform the tracker that task scheduling has completed
             partialResultQueryTaskTracker.completeTaskScheduling();
-
+            // 如果仍然有就绪部分待执行，则再次进行调度
             if (!getSectionsReadyForExecution().isEmpty()) {
                 startScheduling();
             }
@@ -598,6 +608,7 @@ public class SqlQueryScheduler
     {
         ImmutableList.Builder<SectionExecution> result = ImmutableList.builder();
         for (StreamingPlanSection section : sections) {
+            // 获取StageId
             StageId sectionId = getStageId(section.getPlan().getFragment().getId());
             List<SectionExecution> attempts = sectionExecutions.computeIfAbsent(sectionId, (ignored) -> new CopyOnWriteArrayList<>());
 
@@ -605,12 +616,15 @@ public class SqlQueryScheduler
             // never be a non-failed SectionExecution for a section that's ready for execution
             verify(attempts.isEmpty() || getLast(attempts).isFailed(), "Non-failed sectionExecutions already exists");
 
+            // 获取Plan对应的PlanFragment
             PlanFragment sectionRootFragment = section.getPlan().getFragment();
 
             Optional<int[]> bucketToPartition;
             OutputBuffers outputBuffers;
             ExchangeLocationsConsumer locationsConsumer;
+            // 如果是Root
             if (isRootFragment(sectionRootFragment)) {
+                // 将bucketToPartition设置为1
                 bucketToPartition = Optional.of(new int[1]);
                 outputBuffers = createInitialEmptyOutputBuffers(sectionRootFragment.getPartitioningScheme().getPartitioning().getHandle())
                         .withBuffer(new OutputBufferId(0), BROADCAST_PARTITION_ID)
@@ -626,6 +640,9 @@ public class SqlQueryScheduler
             }
 
             int attemptId = attempts.size();
+            /**
+             *  创建
+             */
             SectionExecution sectionExecution = sectionExecutionFactory.createSectionExecutions(
                     session,
                     section,

@@ -19,8 +19,17 @@ import static java.util.Objects.requireNonNull;
 
 public class StageExecutionAndScheduler
 {
+    /**
+     * stage执行器
+     */
     private final SqlStageExecution stageExecution;
+    /**
+     * Stage 间的血缘关系
+     */
     private final StageLinkage stageLinkage;
+    /**
+     * 调度器实例
+     */
     private final StageScheduler stageScheduler;
 
     StageExecutionAndScheduler(SqlStageExecution stageExecution, StageLinkage stageLinkage, StageScheduler stageScheduler)

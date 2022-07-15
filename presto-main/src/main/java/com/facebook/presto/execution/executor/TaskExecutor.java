@@ -85,6 +85,11 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.joining;
 
+/**
+ * TaskExecutor是运行在Presto集群的每个Worker上的Presto服务的，它是用于运行实际计算任务的线程池的包装类，
+ * 该类的主要作用就是处理在Worker上运行的所有Task中的Split。TaskExecutor通过Guice依赖注入SqlTaskManager中，
+ * 并在每个Worker启动的时候调用其start方法运行。
+ */
 @ThreadSafe
 public class TaskExecutor
 {
@@ -301,6 +306,7 @@ public class TaskExecutor
     {
         checkState(!closed, "TaskExecutor is closed");
         for (int i = 0; i < runnerThreads; i++) {
+            //创建TaskExecutor.TaskRunner内部类实例，以处理Split。
             addRunnerThread();
         }
         if (interruptRunawaySplitsTimeout != null) {
@@ -577,6 +583,9 @@ public class TaskExecutor
         public void run()
         {
             try (SetThreadName runnerName = new SetThreadName("SplitRunner-%s", runnerId)) {
+                /**
+                 * 只要当前TaskExecutor不结束并且当前线程不被中断，当前线程就一直不停地循环获取waitingSplits中的split进行处理
+                 */
                 while (!closed && !Thread.currentThread().isInterrupted()) {
                     // select next worker
                     final PrioritizedSplitRunner split;
@@ -596,9 +605,11 @@ public class TaskExecutor
 
                         ListenableFuture<?> blocked;
                         try {
+                            // 调用各个Split的process方法，process只会执行固定时间片长度，若过了固定的时间片Split还没有处理完毕，则也会返回
                             blocked = split.process();
                         }
                         finally {
+                            // 执行完毕之后，需要将Split从runningSplits中移除
                             runningSplitInfos.remove(splitInfo);
                             runningSplits.remove(split);
                         }
@@ -608,6 +619,7 @@ public class TaskExecutor
                             splitFinished(split);
                         }
                         else {
+                            // blocked.isDone表示本次执行完毕
                             if (blocked.isDone()) {
                                 waitingSplits.offer(split);
                             }
@@ -638,6 +650,11 @@ public class TaskExecutor
                 }
             }
             finally {
+                /**
+                 * 若代码执行到这里，说明上面的循环结束，即TaskExecutor.TaskRunner线程被中断或TaskExecutor结束。
+                 * 这时首先判断上述循环结束的原因，若TaskExecutor尚未结束则需要添加一个新的Runner继续执行，从而保证
+                 * TaskExecutor线程池中始终保持固定数目的处理线程
+                 */
                 // unless we have been closed, we need to replace this thread
                 if (!closed) {
                     addRunnerThread();

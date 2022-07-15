@@ -182,7 +182,7 @@ public class SqlTaskManager
                 queryId -> createQueryContext(queryId, localMemoryManager, localSpillManager, gcMonitor, maxQueryUserMemoryPerNode, maxQueryTotalMemoryPerNode, maxRevocableMemoryPerNode, maxQuerySpillPerNode, maxQueryBroadcastMemory)));
 
         requireNonNull(spoolingOutputBufferFactory, "spoolingOutputBufferFactory is null");
-
+        // 每次taskId对应的SqlTask对象不存在的时候，都会重新创建一个。获得了SqlTask对象之后就会调用sqlTask.updateTask方法启动Task，进行计算。
         tasks = CacheBuilder.newBuilder().build(CacheLoader.from(
                 taskId -> createSqlTask(
                         taskId,
@@ -405,6 +405,7 @@ public class SqlTaskManager
         requireNonNull(sources, "sources is null");
         requireNonNull(outputBuffers, "outputBuffers is null");
 
+        // tasks是一个全局缓存，根据taskId获得已经缓存的SqlTask，若没有与之对应的SqlTask，则会新建一个
         SqlTask sqlTask = tasks.getUnchecked(taskId);
         QueryContext queryContext = sqlTask.getQueryContext();
         if (!queryContext.isMemoryLimitsInitialized()) {
@@ -429,6 +430,9 @@ public class SqlTaskManager
         queryContext.setHeapDumpFilePath(heapDumpFilePath);
 
         sqlTask.recordHeartbeat();
+        /**
+         * 获得了SqlTask对象之后就会调用sqlTask.updateTask方法启动Task，进行计算。
+         */
         return sqlTask.updateTask(session, fragment, sources, outputBuffers, tableWriteInfo);
     }
 

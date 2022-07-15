@@ -90,6 +90,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
 /**
+ * Coordinator向特定的Worker节点发送请求以启动一个SqlTaskExecution对象，用于执行Task计算任务，请求的处理均由类TaskResource完成。
+ *
  * Manages tasks on this worker node
  */
 @Path("/v1/task")
@@ -135,6 +137,14 @@ public class TaskResource
         return allTaskInfo;
     }
 
+    /**
+     * 新建或者更新Task
+     *
+     * @param taskId
+     * @param taskUpdateRequest
+     * @param uriInfo
+     * @return
+     */
     @POST
     @Path("{taskId}")
     @Consumes({APPLICATION_JSON, APPLICATION_JACKSON_SMILE})
@@ -147,6 +157,7 @@ public class TaskResource
         TaskInfo taskInfo = taskManager.updateTask(session,
                 taskId,
                 taskUpdateRequest.getFragment().map(planFragmentCodec::fromBytes),
+                // 不断接收到Coordinator节点持续吐出的splits，从而流式的处理splits。
                 taskUpdateRequest.getSources(),
                 taskUpdateRequest.getOutputIds(),
                 taskUpdateRequest.getTableWriteInfo());

@@ -159,13 +159,17 @@ class QueryPlanner
 
     public RelationPlan plan(QuerySpecification node)
     {
+        //builder的root即为生成的NodeTree
         PlanBuilder builder = planFrom(node);
+        //生成TableScanNode
         RelationPlan fromRelationPlan = builder.getRelationPlan();
-
+        //生成FilterNode
         builder = filter(builder, analysis.getWhere(node), node);
+        //生成AggregateNode
         builder = aggregate(builder, node);
+        //如果有Having则生成FilterNode
         builder = filter(builder, analysis.getHaving(node), node);
-
+        //生成windowNode
         builder = window(builder, node);
 
         List<Expression> outputs = analysis.getOutputExpressions(node);

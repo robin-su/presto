@@ -194,6 +194,7 @@ public class NodeScheduler
         int maxUnacknowledgedSplitsPerTask = getMaxUnacknowledgedSplitsPerTask(requireNonNull(session, "session is null"));
         ResourceAwareSchedulingStrategy resourceAwareSchedulingStrategy = getResourceAwareSchedulingStrategy(session);
         if (useNetworkTopology) {
+            // 其使用的节点选择策略同样为TopologyAwareNodeSelector，其主要是通过nodeSelector.selectRandomNodes随机选择节点进行分配。
             return new TopologyAwareNodeSelector(
                     nodeManager,
                     nodeSelectionStats,

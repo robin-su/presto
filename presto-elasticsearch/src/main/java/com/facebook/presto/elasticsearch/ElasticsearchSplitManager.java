@@ -50,6 +50,7 @@ public class ElasticsearchSplitManager
             SplitSchedulingContext splitSchedulingContext)
     {
         ElasticsearchTableLayoutHandle layoutHandle = (ElasticsearchTableLayoutHandle) layout;
+        // 获取表
         ElasticsearchTableHandle tableHandle = layoutHandle.getTable();
 
         if (tableHandle.getType().equals(QUERY)) {

@@ -379,7 +379,7 @@ public class ElasticsearchClient
     {
         Map<String, ElasticsearchNode> nodeById = getNodes().stream()
                 .collect(toImmutableMap(ElasticsearchNode::getId, Function.identity()));
-
+        // 查询elasticsearch某个索引分片信息
         SearchShardsResponse shardsResponse = doRequest(format("/%s/_search_shards", index), SEARCH_SHARDS_RESPONSE_CODEC::fromJson);
 
         ImmutableList.Builder<Shard> shards = ImmutableList.builder();

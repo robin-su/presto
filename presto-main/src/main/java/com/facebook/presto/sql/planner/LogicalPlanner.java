@@ -191,6 +191,7 @@ public class LogicalPlanner
         planChecker.validateIntermediatePlan(root, session, metadata, sqlParser, variableAllocator.getTypes(), warningCollector);
         boolean enableVerboseRuntimeStats = SystemSessionProperties.isVerboseRuntimeStatsEnabled(session);
         if (stage.ordinal() >= Stage.OPTIMIZED.ordinal()) {
+            //对生成的逻辑执行进行优化
             for (PlanOptimizer optimizer : planOptimizers) {
                 long start = System.nanoTime();
                 root = optimizer.optimize(root, session, variableAllocator.getTypes(), variableAllocator, idAllocator, warningCollector);
@@ -583,6 +584,9 @@ public class LogicalPlanner
 
     private RelationPlan createRelationPlan(Analysis analysis, Query query)
     {
+        /**
+         * RelationPlanner类具体的实现就是，遍历ASTNode，生成逻辑执行计划里面对应的Node
+         */
         return new RelationPlanner(analysis, variableAllocator, idAllocator, buildLambdaDeclarationToVariableMap(analysis, variableAllocator), metadata, session)
                 .process(query, null);
     }

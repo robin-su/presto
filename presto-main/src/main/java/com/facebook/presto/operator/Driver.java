@@ -63,6 +63,8 @@ import static java.lang.Boolean.TRUE;
 import static java.util.Objects.requireNonNull;
 
 //
+
+//作用于Split上的一系列操作的封装类为Driver类，其对Split的操作集中在processInternal中。
 // NOTE:  As a general strategy the methods should "stage" a change and only
 // process the actual change before lock release (DriverLockResult.close()).
 // The assures that only one thread will be working with the operators at a
@@ -384,12 +386,14 @@ public class Driver
         handleMemoryRevoke();
 
         try {
+            // 对于处于SourceStage的Task，若尚有未处理读取的Split，将未读取的Split加入到SourceOperator中
             processNewSources();
 
             // If there is only one operator, finish it
             // Some operators (LookupJoinOperator and HashBuildOperator) are broken and requires finish to be called continuously
             // TODO remove the second part of the if statement, when these operators are fixed
             // Note: finish should not be called on the natural source of the pipeline as this could cause the task to finish early
+            // 如果只有一个operator操作，则执行完它
             if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
                 Operator rootOperator = activeOperators.get(0);
                 rootOperator.finish();
@@ -415,22 +419,26 @@ public class Driver
                     Operator current = activeOperators.get(i);
                     Operator next = activeOperators.get(i + 1);
 
+                    // 跳过阻塞的operator
                     // skip blocked operator
                     if (getBlockedFuture(current).isPresent()) {
                         continue;
                     }
 
+                    // 如果当前operator没有结束，而且下一个operator也没有被阻塞且需要输入
                     // if the current operator is not finished and next operator isn't blocked and needs input...
                     if (!current.isFinished() && !getBlockedFuture(next).isPresent() && next.needsInput()) {
+                        // 从当前operator中获得output page，然后将该page作为输入，交给下一个operator进行处理
                         // get an output page from current operator
+                        // // 会根据不同的 sql 操作,得到不同的 Operator 实现类.然后根据实现,调用对应的 connector.该方法返回的是一个 Page, Page 相当于一张 RDBMS 的表,只不过 Page 是列存储的. 获取 page 的时候,会根据 [Block 类型,文件格式]等,使用相应的 Loader 来 load 取数据.
                         Page page = current.getOutput();
                         current.getOperatorContext().recordGetOutput(operationTimer, page);
-
+                        // 对最后一个无输出的operator，我们以缓存为目的保存pages
                         // For the last non-output operator, we keep the pages for caching purpose.
                         if (shouldUseFragmentResultCache() && i == activeOperators.size() - 2 && page != null) {
                             outputPages.add(page);
                         }
-
+                        // 将获得的output page交给下一个operator进行处理
                         // if we got an output page, add it to the next operator
                         if (page != null && page.getPositionCount() != 0) {
                             next.addInput(page);
@@ -442,7 +450,7 @@ public class Driver
                             movedPage = true;
                         }
                     }
-
+                    // 若当前的operator已经完成了，则通知下一个operator：不会再有输入了，需要完成数据处理，并将结果进行刷新
                     // if current operator is finished...
                     if (current.isFinished()) {
                         // let next operator know there will be no more data
@@ -452,6 +460,7 @@ public class Driver
                 }
             }
 
+            // 从后往前检查每个operator是否已执行完成
             for (int index = activeOperators.size() - 1; index >= 0; index--) {
                 if (activeOperators.get(index).isFinished()) {
                     boolean outputOperatorFinished = index == activeOperators.size() - 1;
@@ -479,11 +488,12 @@ public class Driver
                     break;
                 }
             }
-
+            // 若所有的operator都已经循环完毕了，但是没有发生Page的移动，我们需要检查是否有operator被block住了
             // if we did not move any pages, check if we are blocked
             if (!movedPage) {
                 List<Operator> blockedOperators = new ArrayList<>();
                 List<ListenableFuture<?>> blockedFutures = new ArrayList<>();
+                // 循环所有的operator，并获得每个operator的ListenableFuture对象，isBlocked方法会进行判断：若当前operator已经执行结束，则会返回其是否在等待额外的内存
                 for (Operator operator : activeOperators) {
                     Optional<ListenableFuture<?>> blocked = getBlockedFuture(operator);
                     if (blocked.isPresent()) {
@@ -491,8 +501,9 @@ public class Driver
                         blockedFutures.add(blocked.get());
                     }
                 }
-
+                // 若确实有operator被阻塞住了
                 if (!blockedFutures.isEmpty()) {
+                    // 任意一个ListenableFuture完成，就会解除当前Driver的阻塞状态
                     // unblock when the first future is complete
                     ListenableFuture<?> blocked = firstFinishedFuture(blockedFutures);
                     // driver records serial blocked time

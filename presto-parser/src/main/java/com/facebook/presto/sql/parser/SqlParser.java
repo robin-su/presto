@@ -130,6 +130,7 @@ public class SqlParser
     private Node invokeParser(String name, String sql, Function<SqlBaseParser, ParserRuleContext> parseFunction, ParsingOptions parsingOptions)
     {
         try {
+            // //使用词法分析器SqlBaseLexer进行词法分析，产生token序列
             SqlBaseLexer lexer = new SqlBaseLexer(new CaseInsensitiveStream(CharStreams.fromString(sql)));
             CommonTokenStream tokenStream = new CommonTokenStream(lexer);
             SqlBaseParser parser = new SqlBaseParser(tokenStream);
@@ -152,8 +153,9 @@ public class SqlParser
                 }
             });
 
+            //在语法分析器上，添加一个异常处理的监听器PostProcessor
             parser.addParseListener(new PostProcessor(Arrays.asList(parser.getRuleNames()), parsingOptions.getWarningConsumer()));
-
+            // //词法分析器和语法分析器都添加出错时，抛运行时ParsingException异常的监听器ERROR_LISTENER
             lexer.removeErrorListeners();
             lexer.addErrorListener(LEXER_ERROR_LISTENER);
 
@@ -165,7 +167,7 @@ public class SqlParser
             else {
                 parser.addErrorListener(LEXER_ERROR_LISTENER);
             }
-
+            //生成抽象语法树
             ParserRuleContext tree;
             try {
                 // first, try parsing with potentially faster SLL mode
@@ -180,7 +182,7 @@ public class SqlParser
                 parser.getInterpreter().setPredictionMode(PredictionMode.LL);
                 tree = parseFunction.apply(parser);
             }
-
+            //下面开始进行语法分析
             return new AstBuilder(parsingOptions).visit(tree);
         }
         catch (StackOverflowError e) {

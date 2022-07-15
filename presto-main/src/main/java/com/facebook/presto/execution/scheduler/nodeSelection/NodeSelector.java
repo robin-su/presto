@@ -23,6 +23,9 @@ import com.google.common.collect.ImmutableSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 节点选择器
+ */
 public interface NodeSelector
 {
     void lockDownNodes();

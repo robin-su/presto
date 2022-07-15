@@ -39,6 +39,7 @@ public class DynamicSplitPlacementPolicy
     @Override
     public SplitPlacementResult computeAssignments(Set<Split> splits)
     {
+        //调用了nodeSelector的计算分配的方法
         return nodeSelector.computeAssignments(splits, remoteTasks.get());
     }
 

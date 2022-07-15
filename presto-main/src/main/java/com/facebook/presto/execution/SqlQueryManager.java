@@ -68,6 +68,9 @@ import static com.google.common.util.concurrent.Futures.immediateFailedFuture;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
+/**
+ * 语法分析主入口
+ */
 @ThreadSafe
 public class SqlQueryManager
         implements QueryManager
@@ -262,7 +265,9 @@ public class SqlQueryManager
         });
 
         stats.trackQueryStats(queryExecution);
-
+        /**
+         * queryExecution::start 开始执行SQL语法解析
+         */
         embedVersion.embedVersion(queryExecution::start).run();
     }
 

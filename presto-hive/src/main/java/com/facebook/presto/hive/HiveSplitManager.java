@@ -210,6 +210,7 @@ public class HiveSplitManager
         this.encryptionInformationProvider = requireNonNull(encryptionInformationProvider, "encryptionInformationProvider is null");
     }
 
+
     @Override
     public ConnectorSplitSource getSplits(
             ConnectorTransactionHandle transaction,
@@ -217,6 +218,9 @@ public class HiveSplitManager
             ConnectorTableLayoutHandle layoutHandle,
             SplitSchedulingContext splitSchedulingContext)
     {
+        /**
+         * 在Presto中，把一张表的基本数据信息叫做TableLayout
+         */
         HiveTableLayoutHandle layout = (HiveTableLayoutHandle) layoutHandle;
         SchemaTableName tableName = layout.getSchemaTableName();
 
@@ -265,7 +269,7 @@ public class HiveSplitManager
 
         // sort partitions
         partitions = Ordering.natural().onResultOf(HivePartition::getPartitionId).reverse().sortedCopy(partitions);
-
+        //获取这张表的所有的partiton信息，其实是一个迭代器Iterable<HivePartitionMetadata>，有了这个partitions的迭代器
         Iterable<HivePartitionMetadata> hivePartitions = getPartitionMetadata(
                 metastore,
                 table,

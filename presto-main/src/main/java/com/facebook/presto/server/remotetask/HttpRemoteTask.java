@@ -747,10 +747,19 @@ public final class HttpRemoteTask
             return;
         }
 
+        /**
+         * 将当前Task需要处理的所有Split都封装成TaskSource列表
+         *
+         * 需要将当前Task处理的数据都封装成TaskSource的列表，其中一个TaskSource代表一个Task处理的数据源，而Task处理的数据源又分为两类：
+         *   1）Stage的输出和直接的数据源。对于Stage输出类型的数据源，TaskSource类封装了一个Stage的PlannodeId和根据该Stage上的TaskLocation生成的ScheduledSplit列表；
+         *   2）对于直接的数据源，TaskSource类封装了一个数据源的PlannodeId和根据该数据源上的所有数据分片生成的ScheduledSplit列表。
+         * 方法getSources会将两种数据源都封装成TaskSource，然后合并到一起。
+         */
         List<TaskSource> sources = getSources();
-
+        // 将执行计划序列化以通过http发送给worker节点
         Optional<byte[]> fragment = sendPlan.get() ? Optional.of(planFragment.toBytes(planFragmentCodec)) : Optional.empty();
         Optional<TableWriteInfo> writeInfo = sendPlan.get() ? Optional.of(tableWriteInfo) : Optional.empty();
+        // 使用TaskSource列表、outputBuffers创建request请求
         TaskUpdateRequest updateRequest = new TaskUpdateRequest(
                 session.toSessionRepresentation(),
                 session.getIdentity().getExtraCredentials(),
@@ -774,7 +783,7 @@ public final class HttpRemoteTask
                 stats.updateWithoutPlanSize(taskUpdateRequestJson.length);
             }
         }
-
+        // 生成一个Post请求
         HttpUriBuilder uriBuilder = getHttpUriBuilder(taskStatus);
         Request request = setContentTypeHeaders(binaryTransportEnabled, preparePost())
                 .setUri(uriBuilder.build())

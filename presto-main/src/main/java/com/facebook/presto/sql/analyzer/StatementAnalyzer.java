@@ -1085,7 +1085,9 @@ class StatementAnalyzer
         @Override
         protected Scope visitQuery(Query node, Optional<Scope> scope)
         {
+            //分析Sql的查询范围,如想详细了解可进入到该方法中查看
             Scope withScope = analyzeWith(node, scope);
+            //开始分析querybody
             Scope queryBodyScope = process(node.getQueryBody(), withScope);
             List<Expression> orderByExpressions = emptyList();
             if (node.getOrderBy().isPresent()) {
@@ -1256,6 +1258,7 @@ class StatementAnalyzer
                 }
             }
 
+            //这里是获取metadata获取到table的句柄
             Optional<TableHandle> tableHandle = session.getRuntimeStats().profileNanos(GET_TABLE_HANDLE_TIME_NANOS, () -> metadata.getTableHandle(session, name));
             if (!tableHandle.isPresent()) {
                 if (!metadata.getCatalogHandle(session, name.getCatalogName()).isPresent()) {
@@ -1504,6 +1507,7 @@ class StatementAnalyzer
             // TODO: extract candidate names from SELECT, WHERE, HAVING, GROUP BY and ORDER BY expressions
             // to pass down to analyzeFrom
 
+            //开始分析NodeBody
             Scope sourceScope = analyzeFrom(node, scope);
 
             node.getWhere().ifPresent(where -> analyzeWhere(node, sourceScope, where));
@@ -2507,6 +2511,7 @@ class StatementAnalyzer
         private Scope analyzeFrom(QuerySpecification node, Optional<Scope> scope)
         {
             if (node.getFrom().isPresent()) {
+                //继续向里面进入忽略中间的进入到Table类
                 return process(node.getFrom().get(), scope);
             }
 

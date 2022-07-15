@@ -135,39 +135,60 @@ public class TopologyAwareNodeSelector
         return nodeManager.getCurrentNode();
     }
 
+    /**
+     * 随机选择节点
+     * @param limit
+     * @param excludedNodes
+     * @return
+     */
     @Override
     public List<InternalNode> selectRandomNodes(int limit, Set<InternalNode> excludedNodes)
     {
         return selectNodes(limit, randomizedNodes(nodeMap.get().get(), includeCoordinator, excludedNodes));
     }
 
+    /**
+     * split 的分配策略
+     * 1.将所有活跃的工作节点作为候选节点；
+     * 2.如果分片的节点选择策略是HARD_AFFINITY，即分片只能在特定节点进行访问，则根据分片要求更新候选节点列表；
+     * 3.如果分片的节点选择策略不是HARD_AFFINITY，则根据节点的网络拓扑，从候选节点中选择和分片偏好节点网络路径最匹配的节点列表来更新候选节点列表；
+     * 4.使用bestNodeSplitCount方法从更新后的候选节点列表中选择最合适的节点来分配分片；
+     */
     @Override
     public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks)
     {
+        //拿出selector里面的nodeMap
         NodeMap nodeMap = this.nodeMap.get().get();
+        // 存储每个节点分配的split，Multimap的特性是key可重复
         Multimap<InternalNode, Split> assignment = HashMultimap.create();
         NodeAssignmentStats assignmentStats = new NodeAssignmentStats(nodeTaskMap, nodeMap, existingTasks);
 
         int[] topologicCounters = new int[topologicalSplitCounters.size()];
         Set<NetworkLocation> filledLocations = new HashSet<>();
+        // 阻塞的节点
         Set<InternalNode> blockedExactNodes = new HashSet<>();
+        // 是否存在等待分配节点的split
         boolean splitWaitingForAnyNode = false;
-
+        // 将所有活跃的节点作为候选节点
         NodeProvider nodeProvider = nodeMap.getActiveNodeProvider(nodeSelectionHashStrategy);
 
         for (Split split : splits) {
+            // 如果分片的节点选择策略是HARD_AFFINITY，在连接器中进行设置
             SplitWeight splitWeight = split.getSplitWeight();
             if (split.getNodeSelectionStrategy() == HARD_AFFINITY) {
+                // 从连接器的接口中获取该split的优先节点preferredNodes，以此作为候选节点
                 List<InternalNode> candidateNodes = selectExactNodes(nodeMap, split.getPreferredNodes(nodeProvider), includeCoordinator);
                 if (candidateNodes.isEmpty()) {
                     log.debug("No nodes available to schedule %s. Available nodes %s", split, nodeMap.getActiveNodes());
                     throw new PrestoException(NO_NODES_AVAILABLE, "No nodes available to run query");
                 }
+                // 选择最合适的节点
                 InternalNode chosenNode = bestNodeSplitCount(splitWeight, candidateNodes.iterator(), minCandidates, maxPendingSplitsWeightPerTask, assignmentStats);
                 if (chosenNode != null) {
                     assignment.put(chosenNode, split);
                     assignmentStats.addAssignedSplit(chosenNode, splitWeight);
                 }
+                // 如果没有找到合适的节点并且有分片在等待某个节点，则将候选节点全部加入到阻塞节点列表中
                 // Exact node set won't matter, if a split is waiting for any node
                 else if (!splitWaitingForAnyNode) {
                     blockedExactNodes.addAll(candidateNodes);
@@ -178,6 +199,7 @@ public class TopologyAwareNodeSelector
             InternalNode chosenNode = null;
             int depth = networkLocationSegmentNames.size();
             int chosenDepth = 0;
+            // 表示网络拓扑中的一个位置。假定位置是分层的，并且所有工作节点和Split位置都应位于层次结构的同一级别。
             Set<NetworkLocation> locations = new HashSet<>();
             for (HostAddress host : split.getPreferredNodes(nodeProvider)) {
                 locations.add(networkLocationCache.get(host));
@@ -188,6 +210,7 @@ public class TopologyAwareNodeSelector
                 depth = 0;
             }
             // Try each address at progressively shallower network locations
+            // 由深到浅地尝试每个地址的网络位置，也就是说更偏向于分配层次更浅的符合要求的节点
             for (int i = depth; i >= 0 && chosenNode == null; i--) {
                 for (NetworkLocation location : locations) {
                     // Skip locations which are only shallower than this level
@@ -199,7 +222,12 @@ public class TopologyAwareNodeSelector
                     if (filledLocations.contains(location)) {
                         continue;
                     }
+                    // 根据相应的网络路径获取活跃的工作节点
                     Set<InternalNode> nodes = nodeMap.getActiveWorkersByNetworkPath().get(location);
+                    // 将活跃节点随机打散，并调用bestNodeSplitCount进行选择
+                    /**
+                     * 从候选节点列表中随机选择一个（传入节点列表时已进行随机打散new ResettableRandomizedIterator<>(nodes)），如果该节点已分配的Split尚未达到阈值，则选择该节点；
+                     */
                     chosenNode = bestNodeSplitCount(splitWeight, new ResettableRandomizedIterator<>(nodes), minCandidates, calculateMaxPendingSplitsWeightPerTask(i, depth), assignmentStats);
                     if (chosenNode != null) {
                         chosenDepth = i;
@@ -209,6 +237,7 @@ public class TopologyAwareNodeSelector
                 }
             }
             if (chosenNode != null) {
+                //放入选择的node和对应的split
                 assignment.put(chosenNode, split);
                 assignmentStats.addAssignedSplit(chosenNode, splitWeight);
                 topologicCounters[chosenDepth]++;
@@ -256,6 +285,17 @@ public class TopologyAwareNodeSelector
         return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsWeightPerNode, maxPendingSplitsWeightPerTask, maxUnacknowledgedSplitsPerTask, splits, existingTasks, bucketNodeMap, nodeSelectionStats);
     }
 
+    /**
+     * 从更新后的候选节点列表中选择最合适的节点来分配分片；
+     * 如果第1步选择的节点已分配Split达到上限，则选择剩余节点中在当前stage中排队Split最少的节点。
+     *
+     * @param splitWeight
+     * @param candidates
+     * @param minCandidatesWhenFull
+     * @param maxPendingSplitsWeightPerTask
+     * @param assignmentStats
+     * @return
+     */
     @Nullable
     private InternalNode bestNodeSplitCount(SplitWeight splitWeight, Iterator<InternalNode> candidates, int minCandidatesWhenFull, long maxPendingSplitsWeightPerTask, NodeAssignmentStats assignmentStats)
     {

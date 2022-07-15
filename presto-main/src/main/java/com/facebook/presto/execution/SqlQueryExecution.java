@@ -192,12 +192,13 @@ public class SqlQueryExecution
                     preparedQuery.getParameters(),
                     parameterExtractor(preparedQuery.getStatement(), preparedQuery.getParameters()),
                     warningCollector);
-
+            // 构造函数里面就对传入的sql进行了语义的分析
             this.analysis = analyzer.analyzeSemantic(preparedQuery.getStatement(), false);
             stateMachine.setUpdateType(analysis.getUpdateType());
             stateMachine.setExpandedQuery(analysis.getExpandedQuery());
 
             stateMachine.beginColumnAccessPermissionChecking();
+            // 权限校验
             analyzer.checkColumnAccessPermissions(this.analysis);
             stateMachine.endColumnAccessPermissionChecking();
 
@@ -361,11 +362,12 @@ public class SqlQueryExecution
     @Override
     public void start()
     {
+        // 设置当前线程名
         try (SetThreadName ignored = new SetThreadName("Query-%s", stateMachine.getQueryId())) {
             try {
-                // transition to planning
+                // 将状态机转换到planning状态
                 if (!stateMachine.transitionToPlanning()) {
-                    // query already started or finished
+                    // 如果查询已经启动或结束了，则直接返回
                     return;
                 }
 
@@ -376,6 +378,7 @@ public class SqlQueryExecution
                         Thread.currentThread(),
                         timeoutThreadExecutor,
                         getQueryAnalyzerTimeout(getSession()))) {
+                    // 分析查询，生成逻辑执行计划
                     // analyze query
                     plan = analyzeQuery();
                 }
@@ -383,19 +386,24 @@ public class SqlQueryExecution
                 metadata.beginQuery(getSession(), plan.getConnectors());
 
                 // plan distribution of query
+                // 生成查询的分布式执行计划（创建并设置queryScheduler，默认为SqlQueryScheduler实现）
+                // 经过planDistribution方法之后，分段的逻辑执行计划就转化成了stage执行计划，
+                // 而presto对task的调度都是基于stage来调度的，紧接着SqlQueryScheduler会构造SqlStage执行器
                 planDistribution(plan);
 
-                // transition to starting
+                // 将状态机转换到starting状态
                 if (!stateMachine.transitionToStarting()) {
-                    // query already started or finished
+                    // 如果查询已经启动或结束了，则直接返回
                     return;
                 }
 
+                // 如果查询还未完成，则启动scheduler调度器，否则取消它
                 // if query is not finished, start the scheduler, otherwise cancel it
                 SqlQuerySchedulerInterface scheduler = queryScheduler.get();
 
+                // 如果查询还未完成，则启动scheduler调度器，否则取消它
                 if (!stateMachine.isDone()) {
-                    scheduler.start();
+                    scheduler.start(); //分发计划体现在plan创建的Scheduler上
                 }
             }
             catch (Throwable e) {
@@ -442,6 +450,7 @@ public class SqlQueryExecution
     private PlanRoot analyzeQuery()
     {
         try {
+            // 开始分析
             return doAnalyzeQuery();
         }
         catch (StackOverflowError e) {
@@ -458,6 +467,7 @@ public class SqlQueryExecution
         LogicalPlanner logicalPlanner = new LogicalPlanner(false, stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, stateMachine.getWarningCollector(), planChecker);
         Plan plan = getSession().getRuntimeStats().profileNanos(
                 LOGICAL_PLANNER_TIME_NANOS,
+                // 开始执行逻辑执行计划的构建
                 () -> logicalPlanner.plan(analysis));
         queryPlan.set(plan);
 
@@ -472,6 +482,9 @@ public class SqlQueryExecution
         // fragment the plan
         // the variableAllocator is finally passed to SqlQueryScheduler for runtime cost-based optimizations
         variableAllocator.set(new PlanVariableAllocator(plan.getTypes().allVariables()));
+        /**
+         * SubPlan类的构建
+         */
         SubPlan fragmentedPlan = getSession().getRuntimeStats().profileNanos(
                 FRAGMENT_PLAN_TIME_NANOS,
                 () -> planFragmenter.createSubPlans(stateMachine.getSession(), plan, false, idAllocator, variableAllocator.get(), stateMachine.getWarningCollector()));
@@ -501,6 +514,7 @@ public class SqlQueryExecution
 
     private void planDistribution(PlanRoot plan)
     {
+        // 获取Split
         CloseableSplitSourceProvider splitSourceProvider = new CloseableSplitSourceProvider(splitManager::getSplits);
 
         // ensure split sources are closed
@@ -533,6 +547,7 @@ public class SqlQueryExecution
 
         SplitSourceFactory splitSourceFactory = new SplitSourceFactory(splitSourceProvider, stateMachine.getWarningCollector());
         // build the stage execution objects (this doesn't schedule execution)
+        // 创建调度器，这其中会创建多个stage
         SqlQuerySchedulerInterface scheduler = isUseLegacyScheduler(getSession()) ?
                 LegacySqlQueryScheduler.createSqlQueryScheduler(
                         locationFactory,
@@ -556,6 +571,7 @@ public class SqlQueryExecution
                         metadata,
                         sqlParser,
                         partialResultQueryManager) :
+                // 创建SQL调度器
                 SqlQueryScheduler.createSqlQueryScheduler(
                         locationFactory,
                         executionPolicy,
@@ -810,7 +826,7 @@ public class SqlQueryExecution
             String executionPolicyName = getExecutionPolicy(stateMachine.getSession());
             ExecutionPolicy executionPolicy = executionPolicies.get(executionPolicyName);
             checkArgument(executionPolicy != null, "No execution policy %s", executionPolicy);
-
+            // 构造器中中包含语义分析流程
             SqlQueryExecution execution = new SqlQueryExecution(
                     preparedQuery,
                     stateMachine,

@@ -118,6 +118,7 @@ public class BackgroundHiveSplitLoader
                 ListenableFuture<?> future;
                 taskExecutionLock.readLock().lock();
                 try {
+                    // loadSplits()方法来不断加载splits。
                     future = loadSplits();
                 }
                 catch (Exception e) {
@@ -183,17 +184,29 @@ public class BackgroundHiveSplitLoader
     private ListenableFuture<?> loadSplits()
             throws IOException
     {
+        //获取等待处理的split信息
         Iterator<InternalHiveSplit> splits = fileIterators.poll();
-        if (splits == null) {
+        if (splits == null) { //如果当前没有需要处理的splits
+            //尝试获取一个新的partiton进行处理
             HivePartitionMetadata partition = partitions.poll();
             if (partition == null) {
                 return COMPLETED_FUTURE;
             }
+            //加载这个partition，即读取HDFS,将这个partition的文件转化成一个一个的split
+            /**
+             *  1. presto先扫描所有所有需要访问的hdfs的数据文件，如果hdfs文件比hive.max-split-size(默认64M) 大，则一个文件生成一个split.
+             *     其代码实现在于BackgroundHiveSplitLoader::loadSplits中，loadSplits会扫描分区的所有文件，每个文件创建一个InternalHiveSplit，提交到HiveSplitSource中异步生成真正的HiveSplit。
+             *
+             *  2. 在HiveSplitSource中，如果文件不可切割的话，则无论文件大大小多大都只生成一个split，如果可以切割而且文件大于hive.max-split-size，则对文件进行切割成多个split，每个split最大处理hive.max-split-size大小的数据
+             */
             return delegatingPartitionLoader.loadPartition(partition, hiveSplitSource, stopped);
         }
 
+        //开始遍历每一个splits
         while (splits.hasNext() && !stopped) {
+
             ListenableFuture<?> future = hiveSplitSource.addToQueue(splits.next());
+            // 如果我们发现future 不是done的状态，证明hiveSplitSource出现了队列满等可能的异常，因此需要把这个splits重新放回fileIterators中
             if (!future.isDone()) {
                 fileIterators.addFirst(splits);
                 return future;

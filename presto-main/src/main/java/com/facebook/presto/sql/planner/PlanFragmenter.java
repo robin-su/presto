@@ -175,8 +175,21 @@ public class PlanFragmenter
         return createSubPlans(session, plan, forceSingleNode, idAllocator, variableAllocator, warningCollector);
     }
 
+    /**
+     * 用Fragmenter，Visit整个plan，根据ExchangeNode生成fragment.
+     * 对逻辑执行计划进行分段，准备生成分布式执行计划.
+     *
+     * @param session
+     * @param plan
+     * @param forceSingleNode
+     * @param idAllocator
+     * @param variableAllocator
+     * @param warningCollector
+     * @return
+     */
     public SubPlan createSubPlans(Session session, Plan plan, boolean forceSingleNode, PlanNodeIdAllocator idAllocator, PlanVariableAllocator variableAllocator, WarningCollector warningCollector)
     {
+        // 构造Fragmenter
         Fragmenter fragmenter = new Fragmenter(
                 session,
                 metadata,

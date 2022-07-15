@@ -158,7 +158,7 @@ public final class SqlStageExecution
         requireNonNull(failureDetector, "failureDetector is null");
         requireNonNull(schedulerStats, "schedulerStats is null");
         requireNonNull(tableWriteInfo, "tableWriteInfo is null");
-
+        // 构造SqlStageExecution
         SqlStageExecution sqlStageExecution = new SqlStageExecution(
                 session,
                 new StageExecutionStateMachine(stageExecutionId, executor, schedulerStats, !fragment.getTableScanSchedulingOrder().isEmpty()),
@@ -468,10 +468,14 @@ public final class SqlStageExecution
         ImmutableSet.Builder<RemoteTask> newTasks = ImmutableSet.builder();
         Collection<RemoteTask> tasks = this.tasks.get(node);
         RemoteTask task;
+        // 若Task为空则创建Task
         if (tasks == null) {
             // The output buffer depends on the task id starting from 0 and being sequential, since each
             // task is assigned a private buffer based on task id.
             TaskId taskId = new TaskId(stateMachine.getStageExecutionId(), nextTaskId.getAndIncrement());
+            /**
+             * stage调度会产生task任务下发到worker上执行
+             */
             task = scheduleTask(node, taskId, splits);
             newTasks.add(task);
         }
@@ -496,6 +500,9 @@ public final class SqlStageExecution
         checkArgument(!allTasks.contains(taskId), "A task with id %s already exists", taskId);
 
         ImmutableMultimap.Builder<PlanNodeId, Split> initialSplits = ImmutableMultimap.builder();
+        //搜集所有的sourceSplits:
+        // 1.在类型为source的stage中，该方法传入参数sourceSplits有值的，
+        // 2.而在fixed和single的stage中，该方法的传入参数sourceSplits是没有值的
         initialSplits.putAll(sourceSplits);
 
         sourceTasks.forEach((planNodeId, task) -> {
@@ -507,7 +514,7 @@ public final class SqlStageExecution
 
         OutputBuffers outputBuffers = this.outputBuffers.get();
         checkState(outputBuffers != null, "Initial output buffers must be set before a task can be scheduled");
-
+        //创建远程的task任务
         RemoteTask task = remoteTaskFactory.createRemoteTask(
                 session,
                 taskId,

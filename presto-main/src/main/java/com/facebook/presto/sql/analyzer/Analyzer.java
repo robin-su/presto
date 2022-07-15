@@ -87,9 +87,13 @@ public class Analyzer
 
     public Analysis analyzeSemantic(Statement statement, boolean isDescribe)
     {
+        //sql重写
         Statement rewrittenStatement = StatementRewrite.rewrite(session, metadata, sqlParser, queryExplainer, statement, parameters, parameterLookup, accessControl, warningCollector);
+        //初始化Analysis
         Analysis analysis = new Analysis(rewrittenStatement, parameterLookup, isDescribe);
+        //创建Statement分析器
         StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session, warningCollector);
+        //调用Statement分析器去分析
         analyzer.analyze(rewrittenStatement, Optional.empty());
         analyzeForUtilizedColumns(analysis, analysis.getStatement());
         return analysis;

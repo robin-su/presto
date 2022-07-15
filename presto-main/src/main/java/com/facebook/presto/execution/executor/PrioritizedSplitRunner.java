@@ -163,6 +163,9 @@ public class PrioritizedSplitRunner
 
             long wallStart = System.nanoTime();
             long cpuStart = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+            /**
+             * 调用split的processFor方法进行实际的split的处理
+             */
             ListenableFuture<?> blocked = split.processFor(SPLIT_RUN_QUANTA);
             long quantaCpuNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime() - cpuStart;
             Duration wallDuration = new Duration(System.nanoTime() - wallStart, NANOSECONDS);
