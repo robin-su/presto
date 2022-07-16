@@ -401,6 +401,7 @@ public class SqlQueryExecution
                 // if query is not finished, start the scheduler, otherwise cancel it
                 SqlQuerySchedulerInterface scheduler = queryScheduler.get();
 
+                // Stage的调度，根据执行计划，将Task调度到Presto Worker上
                 // 如果查询还未完成，则启动scheduler调度器，否则取消它
                 if (!stateMachine.isDone()) {
                     scheduler.start(); //分发计划体现在plan创建的Scheduler上
@@ -467,7 +468,7 @@ public class SqlQueryExecution
         LogicalPlanner logicalPlanner = new LogicalPlanner(false, stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, stateMachine.getWarningCollector(), planChecker);
         Plan plan = getSession().getRuntimeStats().profileNanos(
                 LOGICAL_PLANNER_TIME_NANOS,
-                // 开始执行逻辑执行计划的构建
+                // 开始执行逻辑执行计划的构建,生成Optimized Logical Plan
                 () -> logicalPlanner.plan(analysis));
         queryPlan.set(plan);
 
@@ -483,7 +484,7 @@ public class SqlQueryExecution
         // the variableAllocator is finally passed to SqlQueryScheduler for runtime cost-based optimizations
         variableAllocator.set(new PlanVariableAllocator(plan.getTypes().allVariables()));
         /**
-         * SubPlan类的构建
+         * SubPlan类的构建,为逻辑执行计划分段(Fragment)[也被称之为划分Stage]
          */
         SubPlan fragmentedPlan = getSession().getRuntimeStats().profileNanos(
                 FRAGMENT_PLAN_TIME_NANOS,

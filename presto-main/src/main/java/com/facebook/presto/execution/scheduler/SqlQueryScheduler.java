@@ -325,6 +325,7 @@ public class SqlQueryScheduler
                 sectionExecutions.forEach(sectionExecution -> scheduledStageExecutions.addAll(sectionExecution.getSectionStages()));
                 sectionExecutions.stream()
                         .map(SectionExecution::getSectionStages)
+                        // 根据执行策略确定Stage的调度顺序与调度时机，默认是AllAtOnceExecutionPolicy会按照Stage执行的上下游关系依次调度Stage，生成Task并全部分发到Presto Worker上。另外一种策略是PhasedExecutionPolicy，感兴趣的朋友可以翻看一下相关源码。
                         .map(stages -> executionPolicy.createExecutionSchedule(session, stages))
                         .forEach(executionSchedules::add);
                 // 如果待执行调度的部分非空并且不是已执行完成则执行循环
@@ -339,6 +340,9 @@ public class SqlQueryScheduler
                         executionAndScheduler.getStageExecution().beginScheduling();
 
                         // 获取stage调度器并执行调度获取结果
+                        /**
+                         * 绑定Presto Worker（Node）与上游数据源Split的关系、创建Task并调度到Presto Worker上
+                         */
                         ScheduleResult result = executionAndScheduler.getStageScheduler()
                                 .schedule();
 
@@ -360,6 +364,7 @@ public class SqlQueryScheduler
                             blockedStages.add(result.getBlocked());
                         }
                         // 根据当前stage的结果，设置父stage的shuffle追踪地址（用来进行stage间的exchange数据）
+                        // 将上一步在当前Stage上刚创建的Task，注册到下游Sage的sourceTask列表里
                         executionAndScheduler.getStageLinkage()
                                 .processScheduleResults(executionAndScheduler.getStageExecution().getState(), result.getNewTasks());
                         schedulerStats.getSplitsScheduledPerIteration().add(result.getSplitsScheduled());

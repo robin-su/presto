@@ -77,6 +77,9 @@ public class PageSourceManager
 
         ConnectorSession connectorSession = session.toConnectorSession(split.getConnectorId());
         if (table.getLayout().isPresent()) {
+            /**
+             * 这里进入
+             */
             return getPageSourceProvider(split).createPageSource(
                     split.getTransactionHandle(),
                     connectorSession,

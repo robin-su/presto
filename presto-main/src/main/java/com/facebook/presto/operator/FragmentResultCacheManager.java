@@ -21,8 +21,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Future;
 
+/**
+ * Presto中主要依赖 FragmentResultCacheManager 接口实现缓存片段(fragment)
+ */
 public interface FragmentResultCacheManager
 {
+    /**
+     * 缓存中的键指的是执行片段序列化后的字符串serializedPlan，加上特定的数据分片split，缓存中的值就是执行片段的输出结果result，格式为List<Page>。
+     * @param serializedPlan
+     * @param split
+     * @param result
+     * @return
+     */
     Future<?> put(String serializedPlan, Split split, List<Page> result);
 
     Optional<Iterator<Page>> get(String serializedPlan, Split split);

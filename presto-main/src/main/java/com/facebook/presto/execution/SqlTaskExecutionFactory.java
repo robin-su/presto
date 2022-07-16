@@ -87,6 +87,7 @@ public class SqlTaskExecutionFactory
             List<TaskSource> sources,
             TableWriteInfo tableWriteInfo)
     {
+        // 创建Task上下文
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
                 session,
@@ -99,6 +100,7 @@ public class SqlTaskExecutionFactory
                 legacyLifespanCompletionCondition);
 
         LocalExecutionPlan localExecutionPlan;
+        // 设置线程名称
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
             try {
                 localExecutionPlan = planner.plan(

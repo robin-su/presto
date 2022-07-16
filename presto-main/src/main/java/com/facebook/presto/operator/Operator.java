@@ -40,12 +40,16 @@ public interface Operator
     boolean needsInput();
 
     /**
+     * 交给Operator一个数据的Page去处理，这个Page我们可以暂且理解为是一批待处理的数据。
+     *
      * Adds an input page to the operator.  This method will only be called if
      * {@code needsInput()} returns true.
      */
     void addInput(Page page);
 
     /**
+     * addInput()输入的数据，经过Operator的内部处理逻辑处理完后，通过getOutput()来输出，输出的数据类型仍然是Page。
+     *
      * Gets an output page from the operator.  If no output data is currently
      * available, return null.
      */

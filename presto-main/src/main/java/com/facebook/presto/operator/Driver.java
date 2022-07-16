@@ -232,6 +232,11 @@ public class Driver
         tryWithLock(() -> TRUE);
     }
 
+    /**
+     * 用于将split添加到sourceOperator中。
+     * Driver对象中，一般有一个sourceOperator，作为整个Driver的初始操作，其余Operator都在其后执行，sourceOperator需要一个数据分片split，
+     * 用于加载实际的数据，其余的Operator的输入数据都是前一个Operator的输出。
+     */
     @GuardedBy("exclusiveLock")
     private void processNewSources()
     {
@@ -262,7 +267,10 @@ public class Driver
         SourceOperator sourceOperator = this.sourceOperator.orElseThrow(VerifyException::new);
         for (ScheduledSplit newSplit : newSplits) {
             Split split = newSplit.getSplit();
-
+            /**
+             * 从执行片段缓存上下文fragmentResultCacheContext中可以获取到缓存管理器，根据上下文中原本的执行片段hash值，
+             * 以及processNewSources()方法中获取的split，可以取出缓存。缓存值以Optional的类型表示，用于标识缓存是否命中。
+             */
             if (fragmentResultCacheContext.get().isPresent() && !(split.getConnectorSplit() instanceof RemoteSplit)) {
                 checkState(!this.cachedResult.get().isPresent());
                 this.fragmentResultCacheContext.set(this.fragmentResultCacheContext.get().map(context -> context.updateRuntimeInformation(split.getConnectorSplit())));
@@ -308,6 +316,10 @@ public class Driver
             try {
                 long start = System.nanoTime();
                 do {
+                    /**
+                     * 该方法用于按序执行Driver对象中的每一个算子，即获取前一个算子的输出结果，并将该结果添加到下一个算子的输入，执行计算，
+                     * 直至所有算子计算完毕
+                     */
                     ListenableFuture<?> future = processInternal(operationTimer);
                     if (!future.isDone()) {
                         return updateDriverBlockedFuture(future);
@@ -401,6 +413,9 @@ public class Driver
             }
 
             boolean movedPage = false;
+            /**
+             * 使用缓缓
+             */
             if (cachedResult.get().isPresent()) {
                 Iterator<Page> remainingPages = cachedResult.get().get();
                 Operator outputOperator = activeOperators.get(activeOperators.size() - 1);
@@ -415,6 +430,9 @@ public class Driver
                 }
             }
             else {
+                /**
+                 * 按照顺讯执行各个Operator
+                 */
                 for (int i = 0; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
                     Operator current = activeOperators.get(i);
                     Operator next = activeOperators.get(i + 1);
@@ -430,7 +448,10 @@ public class Driver
                     if (!current.isFinished() && !getBlockedFuture(next).isPresent() && next.needsInput()) {
                         // 从当前operator中获得output page，然后将该page作为输入，交给下一个operator进行处理
                         // get an output page from current operator
-                        // // 会根据不同的 sql 操作,得到不同的 Operator 实现类.然后根据实现,调用对应的 connector.该方法返回的是一个 Page, Page 相当于一张 RDBMS 的表,只不过 Page 是列存储的. 获取 page 的时候,会根据 [Block 类型,文件格式]等,使用相应的 Loader 来 load 取数据.
+                        /**
+                         * 会根据不同的sql操作,得到不同的Operator实现类.然后根据实现,调用对应的 connector.该方法返回的是一个 Page,
+                         * Page相当于一张RDBMS的表,只不过Page是列存储的.获取page的时候,会根据[Block 类型,文件格式]等,使用相应的Loader来load取数据.
+                         */
                         Page page = current.getOutput();
                         current.getOperatorContext().recordGetOutput(operationTimer, page);
                         // 对最后一个无输出的operator，我们以缓存为目的保存pages

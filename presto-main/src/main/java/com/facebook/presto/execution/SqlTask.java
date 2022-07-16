@@ -429,6 +429,11 @@ public class SqlTask
 
     /**
      * 更新需要处理的Split列表
+     *
+     * Coordinator_Only、Single和Fixed类型的Task在调度的时候都是直接创建Task的，而只有Source类型的Task由于其分批调度Splits，
+     * 因此有可能会多次调用scheduleTask方法，所以会判断在调用scheduleTask方法的时候，对应的Node上是否已经创建了Task：若已经创建，
+     * 就更新Task；否则就创建Task。因此在Task调度阶段只有Source类型的Task才会被更新。
+     *
      * @param session
      * @param fragment
      * @param sources
@@ -454,13 +459,17 @@ public class SqlTask
             synchronized (this) {
                 // is task already complete?
                 TaskHolder taskHolder = taskHolderReference.get();
+                // 如果task已经执行完成,则直接返回
                 if (taskHolder.isFinished()) {
                     return taskHolder.getFinalTaskInfo();
                 }
+                // 获取Task执行器
                 taskExecution = taskHolder.getTaskExecution();
+                // 若Task执行器为空
                 if (taskExecution == null) {
                     checkState(fragment.isPresent(), "fragment must be present");
                     checkState(tableWriteInfo.isPresent(), "tableWriteInfo must be present");
+                    // 创建Task执行器
                     taskExecution = sqlTaskExecutionFactory.create(
                             session,
                             queryContext,
@@ -487,7 +496,7 @@ public class SqlTask
         catch (RuntimeException e) {
             failed(e);
         }
-
+        // 返回当前Task的信息
         return getTaskInfo();
     }
 

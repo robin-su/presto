@@ -148,6 +148,11 @@ import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
+/**
+ * 从逻辑计划树到物理计划树的转换是通过 Presto 里面名为 AddExchanges 类去处理的。
+ * 从实现上来看，AddExchanges 和其他优化规则一样，也是实现了PlanOptimizer接口，所有修改计划树的逻辑都在Rewriter里面。
+ * https://jishuin.proginn.com/p/763bfbd62b9d
+ */
 public class AddExchanges
         implements PlanOptimizer
 {
@@ -162,6 +167,17 @@ public class AddExchanges
         this.partitioningProviderManager = requireNonNull(partitioningProviderManager, "partitioningProviderManager is null");
     }
 
+    /**
+     * 逻辑执行计划转换成物理执行计划
+     *
+     * @param plan
+     * @param session
+     * @param types
+     * @param variableAllocator
+     * @param idAllocator
+     * @param warningCollector
+     * @return
+     */
     @Override
     public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, PlanVariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
@@ -169,6 +185,9 @@ public class AddExchanges
         return result.getNode();
     }
 
+    /**
+     * 所有修改计划树的逻辑都在Rewriter里面。
+     */
     private class Rewriter
             extends InternalPlanVisitor<PlanWithProperties, PreferredProperties>
     {

@@ -40,6 +40,9 @@ import static com.google.common.hash.Hashing.sha256;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
+/**
+ * 在将执行片段转换成物理执行计划时，Presto会添加缓存的上下文信息，缓存上下文信息中包含了执行片段序列化后的字符串。
+ */
 public class FragmentResultCacheContext
 {
     private static final Logger log = Logger.get(FragmentResultCacheContext.class);
@@ -52,6 +55,19 @@ public class FragmentResultCacheContext
 
     private final FragmentResultCacheManager fragmentResultCacheManager;
     private final CanonicalPlanFragment canonicalPlanFragment;
+    /**
+     * 缓存上下文在生成物理执行计划时创建，可以拿到整个执行片段，执行片段是用JSON结构表示，所以JSON字符串表示可以唯一标识一个特定执行片段，
+     * 执行片段表现为树的形式，由于缓存的特殊性，Presto当前仅支持聚合运算的执行片段缓存，并且聚合操作之前也只能出现以下节点：
+     *   TableScanNode，
+     *   FilterNode，
+     *   ProjectNode，
+     *   GroupIdNode，
+     *   UnnestNode。
+     * 在将执行片段转换成JSON字符之前，Presto还对整个执行片段进行了部分替换，主要包含两个方面：
+     *  1. 将TableScanNode替换成CanonicalTableScanNode，主要是为了去除TableScanNode中的谓词，主要原因是这部分谓词对于物理执行计划的生成没有贡献；
+     *  2.将执行片段中的输出变量符合全部转换为ColumnHandle.toString()，主要原因是为了唯一标识一个执行片段。
+     *
+     */
     private final String hashedCanonicalPlanFragment;
     private final ObjectMapper objectMapper;
 

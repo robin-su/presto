@@ -34,6 +34,7 @@ public class FixedCountScheduler
     }
 
     private final TaskScheduler taskScheduler;
+    // Task将调度到下面的节点上（Presto Worker Node），每个节点对应一个Task
     private final List<InternalNode> partitionToNode;
 
     public FixedCountScheduler(SqlStageExecution stage, List<InternalNode> partitionToNode)

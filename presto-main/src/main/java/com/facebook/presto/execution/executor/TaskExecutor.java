@@ -590,6 +590,7 @@ public class TaskExecutor
                     // select next worker
                     final PrioritizedSplitRunner split;
                     try {
+                        // 获取Split
                         split = waitingSplits.take();
                     }
                     catch (InterruptedException e) {

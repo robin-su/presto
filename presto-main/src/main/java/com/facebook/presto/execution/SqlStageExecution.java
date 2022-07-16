@@ -503,8 +503,10 @@ public final class SqlStageExecution
         //搜集所有的sourceSplits:
         // 1.在类型为source的stage中，该方法传入参数sourceSplits有值的，
         // 2.而在fixed和single的stage中，该方法的传入参数sourceSplits是没有值的
+        // 添加来自上游数据源Connector的Split
         initialSplits.putAll(sourceSplits);
 
+        // 添加来自上游Stage的Task的数据输出，注册为RemoteSplit
         sourceTasks.forEach((planNodeId, task) -> {
             TaskStatus status = task.getTaskStatus();
             if (status.getState() != TaskState.FINISHED) {
@@ -527,8 +529,9 @@ public final class SqlStageExecution
                 tableWriteInfo);
 
         completeSources.forEach(task::noMoreSplits);
-
+        // 将刚创建的TaskId添加到当前Stage的TaskId列表中
         allTasks.add(taskId);
+        // 将刚创建的Task添加到当前Stage的节点与Task映射的map中
         tasks.computeIfAbsent(node, key -> newConcurrentHashSet()).add(task);
         nodeTaskMap.addTask(node, task);
 
@@ -536,6 +539,7 @@ public final class SqlStageExecution
         task.addFinalTaskInfoListener(this::updateFinalTaskInfo);
 
         if (!stateMachine.getState().isDone()) {
+            // 向Presto Worker发请求，把刚创建的Task调度起来，开始执行
             task.start();
         }
         else {
