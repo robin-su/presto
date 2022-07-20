@@ -23,6 +23,12 @@ import java.util.List;
 
 import static java.util.stream.Collectors.toList;
 
+/**
+ * 它表示的是值的集合，或者更准确的说是变量的取值范围。
+ * ValueSet 表示的是取值范围，而不会把真正的所有的值都保存在里面，比如它可以表示取值是所有的int: ValueSet.all(INTEGER)
+ * 但是其实它没有保存所有的int，它保存的只是描述信息而已。
+ *
+ */
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
         include = JsonTypeInfo.As.PROPERTY,
@@ -94,20 +100,38 @@ public interface ValueSet
         return SortedRangeSet.copyOf(type, ranges);
     }
 
+    /**
+     * 这个 ValueSet 里面值的类型
+     * @return
+     */
     Type getType();
 
+    /**
+     * 不匹配任何值
+     * @return
+     */
     boolean isNone();
 
+    /**
+     * 匹配任何值
+     * @return
+     */
     boolean isAll();
+
 
     boolean isSingleValue();
 
     Object getSingleValue();
 
+    /**
+     * 是否匹配给定的值
+     * @param value
+     * @return
+     */
     boolean containsValue(Object value);
 
     /**
-     * @return value predicates for equatable Types (but not orderable)
+     * 获取这个 ValueSet 里面所有离散的值(针对不能排序的类型)
      */
     default DiscreteValues getDiscreteValues()
     {
@@ -115,7 +139,7 @@ public interface ValueSet
     }
 
     /**
-     * @return range predicates for orderable Types
+     * 获取这个 ValueSet 里面所有的取值范围(针对可以排序的类型)
      */
     default Ranges getRanges()
     {

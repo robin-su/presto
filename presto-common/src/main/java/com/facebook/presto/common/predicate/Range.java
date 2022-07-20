@@ -24,11 +24,16 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 /**
+ * Range 表示变量在一维坐标上的取值范围，有了 Marker 的帮助，表示一个取值范围就非常的简单了。
+ * 我们说到范围，那就一定有左边界和右边界了，Range 就是这么设计的，看它里面的字段:
+ *
  * A Range of values across the continuous space defined by the types of the Markers
  */
 public final class Range
 {
+    /** 左边界 */
     private final Marker low;
+    /** 右边界 */
     private final Marker high;
 
     @JsonCreator

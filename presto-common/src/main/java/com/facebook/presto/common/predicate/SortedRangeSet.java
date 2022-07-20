@@ -36,6 +36,9 @@ import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static java.util.Objects.requireNonNull;
 
 /**
+ * 它表示的是那些可以排序的( Orderable )值类型的取值范围，而我们平时碰到的几乎都是可以排序的类型，比如数字、字符串、日期等等。
+ * 它内部其实就是一堆排好序的 Range 对象的集合，表示一个变量的多个取值区间的集合
+ *
  * A set containing zero or more Ranges of the same type over a continuous space of possible values.
  * Ranges are coalesced into the most compact representation of non-overlapping Ranges. This structure
  * allows iteration across these compacted Ranges in increasing order, as well as other common
@@ -70,6 +73,8 @@ public final class SortedRangeSet
     }
 
     /**
+     * 工厂方法，也是让你传一堆 Range 进去:
+     *
      * Provided discrete values that are unioned together to form the SortedRangeSet
      */
     static SortedRangeSet of(Type type, Object first, Object... rest)

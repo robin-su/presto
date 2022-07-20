@@ -26,6 +26,8 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 /**
+ * 理解了 ValueSet 之后，理解 Domain 就简单了，Domain 只是把 ValueSet 简单包装了一下，没有提供太多新的东西，
+ *
  * Defines the possible values of a single variable in terms of its valid scalar values and nullability.
  * <p>
  * For example:

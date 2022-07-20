@@ -41,11 +41,43 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 
 /**
+ * 用来表达 table 里面各个字段的约束条件、取值范围的
+ *
+ * 我们要获取其中 年龄大于20岁，并且名字叫Jack的人 ，用TupleDomain 来表达大概是这样的:
+ * // 定义两个Column
+ * ColumnHandle nameColumn = new TestingColumnHandle("name");
+ * ColumnHandle ageColumn = new TestingColumnHandle("age");
+ * // 构造Predicate
+ * TupleDomain<ColumnHandle> predicate = TupleDomain.withColumnDomains(
+ *      ImmutableMap.of(
+ *          // 名字只能取一个值(因此叫Single Value): Jack
+ *          nameColumn, Domain.singleValue(VARCHAR, "Jack"),
+ *          // 年龄要大于等于20(greaterThanOrEqual)
+ *          idColumn, Domain.create(
+ *              ValueSet.ofRanges(Range.greaterThanOrEqual(BIGINT, 20)), false
+ *          )
+ *      )
+ * );
+ *
+ * 饶了这么大的弯子，搞得这么复杂就是为了表达一个 where 条件，为什么不直接用类似SQL里面的 Where 条件的语法来表达，既简单又直接?
+ * 我的理解是这样的： 首先 Presto 是一个可以查询异构数据源的引擎，它不止支持关系型数据库，也支持非关系型数据库比如文件存储，
+ * 文件存储系统可不识别什么 SQL 的 Where语法哦；而且即使是关系型数据库，不同的数据库的语法也不一样，因此一种中立的表达数据约束条件的 DSL 还是蛮有必要的。
+ * 另外 Presto 里面不止要能够表达这个数据约束条件，而且在各种优化器的规则里面还需要能够对这个数据约束条件进行转换、替换、修改，
+ * 因此必须要用一种命令式的方式来表达，而不能用SQL那样的声明式方式来表达。
+ *
+ *
+ * 使用场景：
+ * 1. TableScanNode 里面有一个 concurrentConstraint , 表示读取 table 数据时候的过滤条件，而这个 Constraint 里面的条件就是用 TupleDomain 来表达的。
+ * 2.Presto SPI 里面定义的获取 table 的统计信息的API: ConnectorMetadata.getTableStatistics , ConnectorMetadata.getLayouts 的参数里面都有一个参数就是 Constraint , 让 Presto 框架可以指定查询条件来获取统计数据。
+ * 3.WindowFilterPushDown 这条优化规则在优化的过程中也使用 TupleDomain 对过滤条件进行计算、转换。
+ *
  * Defines a set of valid tuples according to the constraints on each of its constituent columns
  */
 public final class TupleDomain<T>
 {
     /**
+     * 维护了一个字段名到对应的Domain的映射关系，表示一个表里面多个字段的取值约束条件
+     *
      * TupleDomain is internally represented as a normalized map of each column to its
      * respective allowable value Domain. Conceptually, these Domains can be thought of
      * as being AND'ed together to form the representative predicate.

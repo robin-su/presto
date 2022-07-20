@@ -25,6 +25,7 @@ import java.util.function.Function;
 import static java.util.Objects.requireNonNull;
 
 /**
+ * 它表示要么匹配所有的值(All), 要么什么都不匹配(None)
  * Set that either includes all values, or excludes all values.
  */
 public class AllOrNoneValueSet

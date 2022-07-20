@@ -39,6 +39,8 @@ import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 
 /**
+ * EquatableValueset 针对的是离散型的值，所谓的离散型的值在Presto的语境里面指的是那些只实现了 equalTo 和 hash 方法的，而没有实现 compareTo 方法的类型。
+ *
  * A set containing values that are uniquely identifiable.
  * Assumes an infinite number of possible values. The values may be collectively included (aka whitelist)
  * or collectively excluded (aka !whitelist).
@@ -47,7 +49,13 @@ public class EquatableValueSet
         implements ValueSet
 {
     private final Type type;
+    /**
+     * 白名单还是黑名单
+     */
     private final boolean whiteList;
+    /**
+     * 具体的值
+     */
     private final Set<ValueEntry> entries;
 
     @JsonCreator

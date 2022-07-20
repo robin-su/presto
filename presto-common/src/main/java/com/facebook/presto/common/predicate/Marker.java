@@ -26,6 +26,8 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 /**
+ * Maker 表示的是坐标轴上的位置，但是它又不是一个具体的点，而是表示跟一个具体的点的关系，比如 在3的上面 ，在9的下面 , 跟10重合 。
+ *
  * A point on the continuous space defined by the specified type.
  * Each point may be just below, exact, or just above the specified value according to the Bound.
  */
@@ -39,8 +41,17 @@ public final class Marker
         ABOVE    // higher than the value, but infinitesimally close to the value
     }
 
+    /**
+     * Marker所代表的数值的类型, bigint? int? short?
+     */
     private final Type type;
+    /**
+     * 具体的值
+     */
     private final Optional<Block> valueBlock;
+    /**
+     * 跟指定值的关系. 大于？小于？等于
+     */
     private final Bound bound;
 
     /**
@@ -76,6 +87,15 @@ public final class Marker
         return new Marker(type, value.map(object -> Utils.nativeValueToBlock(type, object)), bound);
     }
 
+    /**
+     * 无穷大
+     *
+     * 其中值是没有的( Optional.empty() ), 因为不能存在一个无穷大的确定的值嘛；而跟这个值的关系是 BELOW ，
+     * 也就是说在一个不存在的值的下面 -- 无穷大, 好像不是那么的自然哦，但表达的就是这么个意思
+     *
+     * @param type
+     * @return
+     */
     public static Marker upperUnbounded(Type type)
     {
         requireNonNull(type, "type is null");

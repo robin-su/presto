@@ -116,6 +116,10 @@ import static com.google.common.collect.Iterables.filter;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 
+/**
+ * Presto 优化器：CBO,CRO
+ * Predicate pushdown 即所谓的谓词下推，他可能是最重要也是最容易理解的优化策略，它的做法是尽可能的将过滤条件靠近数据源，使得在执行查询之前尽可能的过滤掉无用的数据
+ */
 public class PredicatePushDown
         implements PlanOptimizer
 {
@@ -406,6 +410,10 @@ public class PredicatePushDown
         @Override
         public PlanNode visitFilter(FilterNode node, RewriteContext<RowExpression> context)
         {
+            /**
+             *   step2中的visitFilter的context.rewrite方法，会递归rewrite FilterNode的source节点，因此访问FilterNode之前，
+             *   先调用了PredicatePushDown:Rewriter::visitProject访问ProjectNode，visitProjectNode优化前的计划执行树：
+             */
             PlanNode rewrittenPlan = context.rewrite(node.getSource(), logicalRowExpressions.combineConjuncts(node.getPredicate(), context.get()));
             if (!(rewrittenPlan instanceof FilterNode)) {
                 return rewrittenPlan;
@@ -427,9 +435,12 @@ public class PredicatePushDown
 
             // See if we can rewrite outer joins in terms of a plain inner join
             node = tryNormalizeToOuterToInnerJoin(node, inheritedPredicate);
-
+            /**
+             * leftEffectivePredicate和rightEffectivePredicate的意思是左右表有没有谓词条件固定为false的情况，比如2 < 1 之类的谓词条件
+             */
             RowExpression leftEffectivePredicate = effectivePredicateExtractor.extract(node.getLeft());
             RowExpression rightEffectivePredicate = effectivePredicateExtractor.extract(node.getRight());
+            // joinPredicate 是join的on条件的谓词
             RowExpression joinPredicate = extractJoinPredicate(node);
 
             RowExpression leftPredicate;
@@ -439,6 +450,7 @@ public class PredicatePushDown
 
             switch (node.getType()) {
                 case INNER:
+                    // processInnerJoin实现INNER Join类型中的谓词下推，processInnerJoin的实现见底下分析
                     InnerJoinPushDownResult innerJoinPushDownResult = processInnerJoin(inheritedPredicate,
                             leftEffectivePredicate,
                             rightEffectivePredicate,
@@ -450,6 +462,7 @@ public class PredicatePushDown
                     newJoinPredicate = innerJoinPushDownResult.getJoinPredicate();
                     break;
                 case LEFT:
+                    // processLimitedOuterJoin功能和processInnerJoin类型，只是往inner表推送谓词的时候，如果谓词字段不在outer表，也不会推送而已
                     OuterJoinPushDownResult leftOuterJoinPushDownResult = processLimitedOuterJoin(inheritedPredicate,
                             leftEffectivePredicate,
                             rightEffectivePredicate,
@@ -483,6 +496,7 @@ public class PredicatePushDown
 
             newJoinPredicate = simplifyExpression(newJoinPredicate);
             // TODO: find a better way to directly optimize FALSE LITERAL in join predicate
+            // 将结果固定为false的join谓词换成 where 0 = 1
             if (newJoinPredicate.equals(FALSE_CONSTANT)) {
                 newJoinPredicate = buildEqualsExpression(functionAndTypeManager, constant(0L, BIGINT), constant(1L, BIGINT));
             }
@@ -496,6 +510,7 @@ public class PredicatePushDown
 
             Locality leftLocality = LOCAL;
             Locality rightLocality = LOCAL;
+            // 如下的意思是如果左右表推了谓词，检查要不要增加project，如果新增的谓词没有对应的project，则新增回来。
             // Create new projections for the new join clauses
             List<JoinNode.EquiJoinClause> equiJoinClauses = new ArrayList<>();
             ImmutableList.Builder<RowExpression> joinFilterBuilder = ImmutableList.builder();
@@ -528,6 +543,7 @@ public class PredicatePushDown
                 }
             }
 
+            // 根据新的谓词条件重新生成左右表的tablescan
             PlanNode leftSource;
             PlanNode rightSource;
 
@@ -568,7 +584,7 @@ public class PredicatePushDown
             boolean filtersEquivalent =
                     newJoinFilter.isPresent() == node.getFilter().isPresent() &&
                             (!newJoinFilter.isPresent() || areExpressionsEquivalent(newJoinFilter.get(), node.getFilter().get()));
-
+            // 重新生成Join Node，新的Join Node已经将所有可能得谓词都下推给TableScan了
             PlanNode output = node;
             if (leftSource != node.getLeft() ||
                     rightSource != node.getRight() ||
@@ -1068,6 +1084,7 @@ public class PredicatePushDown
             ImmutableList.Builder<RowExpression> rightPushDownConjuncts = ImmutableList.builder();
             ImmutableList.Builder<RowExpression> joinConjuncts = ImmutableList.builder();
 
+            // 首先过滤掉哪些不确定的谓词，不确定性的谓词列表见：如果谓词含有rand，random，shuffle，uuid等不确定结果的算子的时候，Presto不会将谓词下推。
             // Strip out non-deterministic conjuncts
             joinConjuncts.addAll(filter(extractConjuncts(inheritedPredicate), not(determinismEvaluator::isDeterministic)));
             inheritedPredicate = logicalRowExpressions.filterDeterministicConjuncts(inheritedPredicate);
@@ -1078,6 +1095,7 @@ public class PredicatePushDown
             leftEffectivePredicate = logicalRowExpressions.filterDeterministicConjuncts(leftEffectivePredicate);
             rightEffectivePredicate = logicalRowExpressions.filterDeterministicConjuncts(rightEffectivePredicate);
 
+            // 根据左右包的谓词和join的谓词推断所有的等式，比如a = b， b = c 可以推断出 a = c
             // Generate equality inferences
             EqualityInference allInference = new EqualityInference.Builder(functionAndTypeManager)
                     .addEqualityInference(inheritedPredicate, leftEffectivePredicate, rightEffectivePredicate, joinPredicate)
@@ -1088,6 +1106,9 @@ public class PredicatePushDown
             EqualityInference allInferenceWithoutRightInferred = new EqualityInference.Builder(functionAndTypeManager)
                     .addEqualityInference(inheritedPredicate, leftEffectivePredicate, joinPredicate)
                     .build();
+
+            // 下边的代码的主要意思是如果发现可以通过推断增加更多的谓词，则将推断新增的谓词加上去
+            // 不如上述推断出新的谓词a = c，则将a = c 加上去到谓词列表中
 
             // Sort through conjuncts in inheritedPredicate that were not used for inference
             for (RowExpression conjunct : new EqualityInference.Builder(functionAndTypeManager).nonInferableConjuncts(inheritedPredicate)) {
@@ -1107,6 +1128,7 @@ public class PredicatePushDown
                 }
             }
 
+            // 如下主要是实现尝试将右边的谓词推到左边TableScan或者将左边的谓词推到右边TableScan
             // See if we can push the right effective predicate to the left side
             for (RowExpression conjunct : new EqualityInference.Builder(functionAndTypeManager).nonInferableConjuncts(rightEffectivePredicate)) {
                 RowExpression rewritten = allInference.rewriteExpression(conjunct, in(leftVariables));
@@ -1123,6 +1145,8 @@ public class PredicatePushDown
                 }
             }
 
+
+            // 如下主要将Join谓词拆开，看下Join谓词能不能推给左右的TableScan
             // See if we can push any parts of the join predicates to either side
             for (RowExpression conjunct : new EqualityInference.Builder(functionAndTypeManager).nonInferableConjuncts(joinPredicate)) {
                 RowExpression leftRewritten = allInference.rewriteExpression(conjunct, in(leftVariables));
@@ -1140,6 +1164,8 @@ public class PredicatePushDown
                 }
             }
 
+            // 如下是将推断出来的新谓词也增加到左右表的过滤条件中
+            // 比如左表x = 1 如果可以推断出右表可以增加y=1，则在右表也增加y=1的过滤条件
             // Add equalities from the inference back in
             leftPushDownConjuncts.addAll(allInferenceWithoutLeftInferred.generateEqualitiesPartitionedBy(in(leftVariables)).getScopeEqualities());
             rightPushDownConjuncts.addAll(allInferenceWithoutRightInferred.generateEqualitiesPartitionedBy(not(in(leftVariables))).getScopeEqualities());
@@ -1618,7 +1644,9 @@ public class PredicatePushDown
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<RowExpression> context)
         {
             RowExpression predicate = simplifyExpression(context.get());
-
+            /**
+             * 插入了一个FilterNode，实现了Filter下推
+             */
             if (!TRUE_CONSTANT.equals(predicate)) {
                 return new FilterNode(node.getSourceLocation(), idAllocator.getNextId(), node, predicate);
             }

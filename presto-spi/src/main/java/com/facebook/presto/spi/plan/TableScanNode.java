@@ -46,6 +46,9 @@ public final class TableScanNode
     // Used during predicate refinement over multiple passes of predicate pushdown
     // TODO: think about how to get rid of this in new planner
     // TODO: these two fields will not be effective if they are created by connectors until we have refactored PickTableLayout
+    /**
+     * 读取 table 数据时候的过滤条件
+     */
     private final TupleDomain<ColumnHandle> currentConstraint;
     private final TupleDomain<ColumnHandle> enforcedConstraint;
     private final List<TableConstraint<ColumnHandle>> tableConstraints;
