@@ -1145,7 +1145,6 @@ public class PredicatePushDown
                 }
             }
 
-
             // 如下主要将Join谓词拆开，看下Join谓词能不能推给左右的TableScan
             // See if we can push any parts of the join predicates to either side
             for (RowExpression conjunct : new EqualityInference.Builder(functionAndTypeManager).nonInferableConjuncts(joinPredicate)) {

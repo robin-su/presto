@@ -118,7 +118,6 @@ public interface ValueSet
      */
     boolean isAll();
 
-
     boolean isSingleValue();
 
     Object getSingleValue();

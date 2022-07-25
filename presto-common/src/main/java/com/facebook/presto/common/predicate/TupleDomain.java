@@ -42,22 +42,12 @@ import static java.util.stream.Collectors.toMap;
 
 /**
  * 用来表达 table 里面各个字段的约束条件、取值范围的
- *
  * 我们要获取其中 年龄大于20岁，并且名字叫Jack的人 ，用TupleDomain 来表达大概是这样的:
  * // 定义两个Column
  * ColumnHandle nameColumn = new TestingColumnHandle("name");
  * ColumnHandle ageColumn = new TestingColumnHandle("age");
  * // 构造Predicate
- * TupleDomain<ColumnHandle> predicate = TupleDomain.withColumnDomains(
- *      ImmutableMap.of(
- *          // 名字只能取一个值(因此叫Single Value): Jack
- *          nameColumn, Domain.singleValue(VARCHAR, "Jack"),
- *          // 年龄要大于等于20(greaterThanOrEqual)
- *          idColumn, Domain.create(
- *              ValueSet.ofRanges(Range.greaterThanOrEqual(BIGINT, 20)), false
- *          )
- *      )
- * );
+ * https://www.jianshu.com/p/4d4bc347df80
  *
  * 饶了这么大的弯子，搞得这么复杂就是为了表达一个 where 条件，为什么不直接用类似SQL里面的 Where 条件的语法来表达，既简单又直接?
  * 我的理解是这样的： 首先 Presto 是一个可以查询异构数据源的引擎，它不止支持关系型数据库，也支持非关系型数据库比如文件存储，

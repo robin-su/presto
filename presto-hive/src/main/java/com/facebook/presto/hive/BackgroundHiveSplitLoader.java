@@ -204,7 +204,6 @@ public class BackgroundHiveSplitLoader
 
         //开始遍历每一个splits
         while (splits.hasNext() && !stopped) {
-
             ListenableFuture<?> future = hiveSplitSource.addToQueue(splits.next());
             // 如果我们发现future 不是done的状态，证明hiveSplitSource出现了队列满等可能的异常，因此需要把这个splits重新放回fileIterators中
             if (!future.isDone()) {

@@ -210,7 +210,6 @@ public class HiveSplitManager
         this.encryptionInformationProvider = requireNonNull(encryptionInformationProvider, "encryptionInformationProvider is null");
     }
 
-
     @Override
     public ConnectorSplitSource getSplits(
             ConnectorTransactionHandle transaction,
